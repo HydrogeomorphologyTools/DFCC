@@ -1,0 +1,15 @@
+[general]
+name=DFCC
+qgisMinimumVersion=3.22
+description=Debris-Flow Channel Classification (Procedura DF): channel initiation, propagation and stopping of debris flows
+version=0.1.0
+author=Stefano Crema, Marco Cavalli, Alessandro Sarretta (CNR GEO)
+email=stefano.crema@cnr.it
+about=Processing algorithms for DFCC: classified channel network, initiation density, high-density areas, main-channel runout and MSF initiation points. Requires the python package "dfcc" (pip install dfcc) in the QGIS Python environment.
+tracker=https://github.com/HydrogeomorphologyTools/DFCC/issues
+repository=https://github.com/HydrogeomorphologyTools/DFCC/DFCC
+tags=debris flow, hydrology, DTM, geomorphology, runout
+homepage=https://github.com/HydrogeomorphologyTools/DFCC/DFCC
+category=Analysis
+icon=icon.png
+experimental=True

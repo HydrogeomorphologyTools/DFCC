@@ -1,0 +1,35 @@
+{
+  "dfcc_version": "0.1.0",
+  "procedure": {
+    "dtm": "gadria_dtm_2.5m.tif",
+    "outdir": "output",
+    "threshold": 50.0,
+    "resolution": null,
+    "prefill": false,
+    "kd_radius": 50.0,
+    "slope_exp": 1.0,
+    "area_exp": 0.5,
+    "keep_intermediate": false,
+    "write_network": true,
+    "write_high_density": true,
+    "prefix": ""
+  },
+  "runout": {
+    "enabled": true,
+    "min_area_km2": 1.0,
+    "max_area_km2": 20.0,
+    "split_area_km2": 2.0,
+    "energy_factor": 0.4,
+    "min_restart_len_m": 30.0,
+    "main_branch": "area",
+    "start_at_head": false,
+    "pour_points": null,
+    "snap_m": 50.0,
+    "hotspot_snap_m": 50.0,
+    "hotspot_prune": true,
+    "write_hotspots": true,
+    "extend_downstream_m": 0.0,
+    "extend_polygon": null,
+    "whole_network": true
+  }
+}
