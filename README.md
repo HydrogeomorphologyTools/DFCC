@@ -25,7 +25,7 @@ A free, stand-alone implementation of the <i>Procedura DF</i> — GUI · command
 1. [What DFCC does](#what-dfcc-does)
 2. [Installation](#installation)
 3. [Quick start](#quick-start)
-4. [How it works](#how-it-works)
+4. [How it works](#how-it-works) · [Scientific basis of the thresholds](#scientific-basis-of-the-thresholds)
 5. [Example results — Gadria test case](#example-results--gadria-test-case)
 6. [Outputs](#outputs)
 7. [Parameters](#parameters)
@@ -114,6 +114,51 @@ The complete parameter set can be saved and reloaded as JSON from the GUI and fr
 5. **Whole-network mode (optional)** — the same rule on every channel cell, processed upstream → downstream. Where flowing branches merge, the one with the **largest energy margin** `0.4·L − K` is propagated (an envelope — states are never summed). A flowing tributary can re-activate a stopped trunk. The main-channel results do not change.
 
 More detail in [`docs/METHOD.md`](docs/METHOD.md) and in the built-in Help.
+
+## Scientific basis of the thresholds
+
+DFCC reproduces the empirical, purely morphometric procedure of Cavalli et al. (2017); the thresholds are not tuned by the software but inherited from the literature below (section 1.1 of the paper). They can be re-parametrised for other settings, but the defaults replicate the original ArcGIS workflow bit by bit.
+
+**Channel network - slope-area threshold.** Channels are the cells exceeding a threshold of the Stream Power Index `SPI = A^0.5 · S` (A = drainage area in m², S = local slope in m/m; Marchi & Dalla Fontana 2005), computed on D8 flow directions (O'Callaghan & Mark 1984). Slope-area channel-initiation thresholds follow Montgomery & Dietrich (1992), Montgomery & Foufoula-Georgiou (1993) and Desmet et al. (1999). The threshold value (`-t`, default 50) must be calibrated on field observations and on the drainage density of the area. Local slope is the drop to the steepest-descent neighbour (Vianello et al. 2009).
+
+**Debris-flow initiation - area-slope threshold.** A network cell is a potential initiation point when its slope exceeds
+
+```
+S = 0.32 · A^-0.2        (A in m², S in m/m)
+```
+
+the empirical envelope derived by Zimmermann et al. (1997) from debris-flow events in Switzerland, in the spirit of the models of Wichmann & Becht (2005) and Horton et al. (2013). Kaless (2006) verified it against initiation areas in the Autonomous Province of Trento (eastern Italian Alps). Two filters complete the rule: an upper local slope of **38°** (about the internal friction angle of alpine debris), which removes very steep bedrock-like cells where sediment is scarce, and an upper drainage-area limit above which channels are dominated by bedload and suspended transport (**10 km²** in the paper, after Marchi & D'Agostino 2004; the original ArcGIS model, and therefore DFCC's default, uses **20 km²**).
+
+**Propagation, slowing and stop - slope classes.** Debris flows start depositing on slopes of roughly 6°-10° and usually stop at about 3°-5° (Benda 1985; Vandre 1985; Burton & Bathurst 1998). Following a cautionary approach, the remaining network cells are classified as
+
+| Local slope | Class |
+|---|---|
+| > 8° (tan = 0.1405) and not initiation | 1 - Propagation |
+| 3° - 8° | 3 - Slowing (deceleration) |
+| < 3° (tan = 0.0524) | 4 - Stop |
+
+**Runout - energy rule.** The runout distance follows the empirical relation of Vandre (1985), `W = α · Δh` with `α = 0.4`, and the rule-based transport model of Burton & Bathurst (1998). Differently from the original thresholds (flow continues above 10°, stops between 4° and 10° or at 4°), DFCC uses the 8° and 3° limits above: the flow halts when `distance on slopes < 8°  >  0.4 · elevation lost on slopes > 8°`, and may restart at a downstream initiation cell.
+
+**Initiation density.** Initiation points are turned into a kernel-density map (50 m radius, points/ha) and split in two classes with natural breaks, to rank the most hazardous reaches (Cavalli et al. 2017).
+
+### References
+
+* Benda, L.E. (1985). Behaviour and effect of debris flows on streams in the Oregon Coast Range. In: *Delineation of landslide, flash flood and debris flow hazards in Utah*, Utah Water Research Laboratory, Logan, 153-162.
+* Burton, A., Bathurst, J.C. (1998). Physically based modelling of shallow landslide sediment yield at a catchment scale. *Environmental Geology* 35, 89-99. <https://doi.org/10.1007/s002540050296>
+* Cavalli, M., Crema, S., Trevisani, S., Marchi, L. (2017). GIS tools for preliminary debris-flow assessment at regional scale. *Journal of Mountain Science* 14(12), 2498-2510. <https://doi.org/10.1007/s11629-017-4573-y>
+* Desmet, P.J.J., Poesen, J., Govers, G., et al. (1999). Importance of slope gradient and contributing area for optimal prediction of the initiation and trajectory of ephemeral gullies. *Catena* 37, 377-392. <https://doi.org/10.1016/S0341-8162(99)00027-2>
+* Horton, P., Jaboyedoff, M., Rudaz, B., et al. (2013). Flow-R, a model for susceptibility mapping of debris flows and other gravitational hazards at a regional scale. *Natural Hazards and Earth System Sciences* 13, 869-885. <https://doi.org/10.5194/nhess-13-869-2013>
+* Kaless, G. (2006). *Il torrente Sarca di Val Genova. Studio geomorfologico per la prevenzione e la mitigazione del rischio geo-idrologico.* Master thesis, University of Padova (in Italian).
+* Marchi, L., D'Agostino, V. (2004). Estimation of debris-flow magnitude in the Eastern Italian Alps. *Earth Surface Processes and Landforms* 29, 207-220. <https://doi.org/10.1002/esp.1027>
+* Marchi, L., Dalla Fontana, G. (2005). GIS morphometric indicators for the analysis of sediment dynamics in mountain basins. *Environmental Geology* 48, 218-228. <https://doi.org/10.1007/s00254-005-1292-4>
+* Montgomery, D.R., Dietrich, W.E. (1992). Channel initiation and the problem of landscape scale. *Science* 255, 826-830. <https://doi.org/10.1126/science.255.5046.826>
+* Montgomery, D.R., Foufoula-Georgiou, E. (1993). Channel network source representation using digital elevation models. *Water Resources Research* 29, 3925-3934. <https://doi.org/10.1029/93WR02463>
+* O'Callaghan, J.F., Mark, D.M. (1984). The extraction of drainage networks from digital elevation data. *Computer Vision, Graphics and Image Processing* 28, 323-344.
+* Vandre, B.C. (1985). Rudd Creek debris flow. In: *Delineation of landslide, flash flood and debris flow hazards in Utah*, Utah Water Research Laboratory, Logan, 117-131.
+* Vianello, A., Cavalli, M., Tarolli, P. (2009). LiDAR-derived slopes for headwater channel network analysis. *Catena* 76, 97-106. <https://doi.org/10.1016/j.catena.2008.09.012>
+* Wichmann, V., Becht, M. (2005). Modelling of geomorphic processes in an alpine catchment. In: Atkinson, P.M., et al. (eds), *GeoDynamics*, 151-167.
+* Zimmermann, M., Mani, P., Gamma, P., et al. (1997). *Murganggefahr und Klimaaenderung - ein GIS-basierter Ansatz.* Schlussbericht NFP 31, Zurich (in German).
+
 
 ## Example results — Gadria test case
 
