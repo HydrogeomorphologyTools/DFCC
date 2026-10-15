@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 title: "DFCC - Debris-Flow Channel Classification"
 message: "If you use this software, please cite it together with the reference below."
-version: 0.1.0
+version: 0.3.2
 date-released: 2026-10-15
 repository-code: https://github.com/HydrogeomorphologyTools/DFCC
 license: GPL-2.0-or-later

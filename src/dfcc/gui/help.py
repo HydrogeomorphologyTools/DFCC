@@ -149,7 +149,7 @@ dropped; <code>keep = 0</code>, <code>dropped_by</code> gives the covering point
 
 <a name="about"></a><h2>About</h2>
 <p><b>DFCC {__version__}</b> – Debris-Flow Channel Classification<br>
-<b>Authors:</b> Stefano Crema (contact: stefano.crema@cnr.it), Marco Cavalli, Alessandro Sarretta – CNR GEO, 2026.<br>Source code, issues and releases: <a href="https://github.com/HydrogeomorphologyTools/DFCC">github.com/HydrogeomorphologyTools/DFCC</a> · version 0.1.0 is a <i>testing</i> release.</p>
+<b>Authors:</b> Stefano Crema (contact: stefano.crema@cnr.it), Marco Cavalli, Alessandro Sarretta – CNR GEO, 2026.<br>Source code, issues and releases: <a href="https://github.com/HydrogeomorphologyTools/DFCC">github.com/HydrogeomorphologyTools/DFCC</a> · version 0.3.2 is a <i>testing</i> release.</p>
 <p>GPL-2.0-or-later · D8 / D∞ routines derive from the native rewrites of <i>SedInConnect 3.2</i> (HydrogeomorphologyTools), themselves ports of TauDEM (D. Tarboton).
 Method: <i>Procedura DF</i> (Cavalli, Crema, Viero, Marchi – CNR). Details in <code>docs/METHOD.md</code>.</p>
 <h3>Bibliography</h3>

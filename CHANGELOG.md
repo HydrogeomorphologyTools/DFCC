@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 — testing release (2026-10-15)
+## 0.3.2 — testing release (2026-10-15)
 
 First public release of **DFCC — Debris-Flow Channel Classification**.
 

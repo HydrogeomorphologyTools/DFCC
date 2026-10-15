@@ -1,14 +1,13 @@
 name: release
-# Builds the Windows executable and attaches it to the GitHub release when a tag v* is pushed
-# (or run manually from the Actions tab, giving an existing tag). Tests run in the separate 'tests' workflow.
+# Optional: builds the Windows executable on GitHub and attaches it to an existing release.
+# Run manually from the Actions tab, giving the tag. Release exes can also be built locally (packaging/build_exe.bat)
+# and uploaded by hand. Tests run in the separate 'tests' workflow.
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
         description: "Existing release tag to attach the zip to"
-        default: "v0.1.0"
+        default: "v0.3.2"
 permissions:
   contents: write
 jobs:

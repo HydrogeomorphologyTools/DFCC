@@ -1,5 +1,5 @@
 {
-  "dfcc_version": "0.1.0",
+  "dfcc_version": "0.3.2",
   "procedure": {
     "dtm": "gadria_dtm_2.5m.tif",
     "outdir": "output",

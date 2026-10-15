@@ -10,14 +10,14 @@ A free, stand-alone implementation of the <i>Procedura DF</i> — GUI · command
 <p align="center">
 <a href="LICENSE"><img alt="License: GPL v2+" src="https://img.shields.io/badge/license-GPL--2.0--or--later-blue"></a>
 <img alt="Status: testing" src="https://img.shields.io/badge/status-testing-orange">
-<img alt="Version" src="https://img.shields.io/badge/version-0.1.0-informational">
+<img alt="Version" src="https://img.shields.io/badge/version-0.3.2-informational">
 <img alt="Python" src="https://img.shields.io/badge/python-3.9%2B-3776ab">
 <img alt="No ArcGIS needed" src="https://img.shields.io/badge/ArcGIS%20%2F%20TauDEM-not%20required-success">
 </p>
 
 <p align="center"><img src="docs/images/gui_map.png" alt="DFCC graphical interface" width="900"></p>
 
-> **Status — v0.1.0 (testing).** The numerical core is verified against the original ArcGIS/TauDEM workflow (see [Validation](#validation));
+> **Status — v0.3.2 (testing).** The numerical core is verified against the original ArcGIS/TauDEM workflow (see [Validation](#validation));
 > the GUI, the plugins and the runout extensions are young. Bug reports and test cases are very welcome (see [Contact](#authors-and-contact)).
 
 ## Contents
@@ -270,7 +270,7 @@ The original repository remains available in the same GitHub account.
 If you use DFCC, please cite the method paper and this software:
 
 * *GIS tools for preliminary debris-flow assessment at regional scale.* Journal of Mountain Science, 14(12), 2017. <https://doi.org/10.1007/s11629-017-4573-y>
-* Crema S., Cavalli M., Sarretta A. (2026). *DFCC — Debris-Flow Channel Classification*, version 0.1.0. <https://github.com/HydrogeomorphologyTools/DFCC> (see [`CITATION.cff`](CITATION.cff)).
+* Crema S., Cavalli M., Sarretta A. (2026). *DFCC — Debris-Flow Channel Classification*, version 0.3.2. <https://github.com/HydrogeomorphologyTools/DFCC> (see [`CITATION.cff`](CITATION.cff)).
 
 The D8/D∞ routines derive from the native rewrites of *SedInConnect 3.2* ([HydrogeomorphologyTools](https://github.com/HydrogeomorphologyTools)), themselves ports of TauDEM (D. Tarboton).
 
