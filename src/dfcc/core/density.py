@@ -70,5 +70,10 @@ def high_density_mask(density, valid=None):
     """Exclude zeros, 2-class natural breaks on the rest; return (mask_high, break_value)."""
     d = density
     ok = (d > 0) if valid is None else ((d > 0) & valid)
-    b1, b2 = jenks2(d[ok])
+    vals = d[ok]
+    if vals.size == 0:                        # no initiation cell at all (e.g. very strict custom thresholds)
+        return np.zeros(d.shape, bool), float("nan")
+    if np.all(vals == vals.flat[0]):          # a single density value: no break, everything non-zero is "high"
+        return ok.copy(), float(vals.flat[0])
+    b1, b2 = jenks2(vals)
     return ok & (d >= b2), b1

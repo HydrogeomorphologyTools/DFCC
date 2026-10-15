@@ -5,6 +5,13 @@ import sys
 import multiprocessing
 
 if getattr(sys, "frozen", False):
+    # Use the PROJ / GDAL data bundled with rasterio, never those inherited from the caller: when DFCC.exe is launched by QGIS
+    # or ArcGIS Pro, PROJ_LIB / PROJ_DATA / GDAL_DATA point to their own (different) PROJ database and CRS parsing fails.
+    _bundle = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)), "rasterio")
+    for _var, _sub in (("PROJ_DATA", "proj_data"), ("PROJ_LIB", "proj_data"), ("GDAL_DATA", "gdal_data")):
+        if os.path.isdir(os.path.join(_bundle, _sub)):
+            os.environ[_var] = os.path.join(_bundle, _sub)
+    os.environ.pop("GDAL_DRIVER_PATH", None)    # do not load another installation's GDAL plug-ins
     # numba cache must live outside the read-only/temporary bundle
     base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~/.cache")
     os.environ.setdefault("NUMBA_CACHE_DIR", os.path.join(base, "DFCC", "numba_cache"))

@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 title: "DFCC - Debris-Flow Channel Classification"
 message: "If you use this software, please cite it together with the reference below."
-version: 0.3.2
+version: 0.4.0
 date-released: 2026-10-15
 repository-code: https://github.com/HydrogeomorphologyTools/DFCC
 license: GPL-2.0-or-later
@@ -21,8 +21,19 @@ authors:
 references:
   - type: article
     title: "GIS tools for preliminary debris-flow assessment at regional scale"
+    authors:
+      - family-names: Cavalli
+        given-names: Marco
+      - family-names: Crema
+        given-names: Stefano
+      - family-names: Trevisani
+        given-names: Sebastiano
+      - family-names: Marchi
+        given-names: Lorenzo
     journal: "Journal of Mountain Science"
     volume: 14
     issue: 12
     year: 2017
+    start: 2498
+    end: 2510
     doi: 10.1007/s11629-017-4573-y

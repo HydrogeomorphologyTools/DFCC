@@ -7,7 +7,7 @@ on:
     inputs:
       tag:
         description: "Existing release tag to attach the zip to"
-        default: "v0.3.2"
+        default: "v0.4.0"
 permissions:
   contents: write
 jobs:
@@ -22,10 +22,18 @@ jobs:
         working-directory: .
       - run: dist\DFCC\DFCC.exe run --help
       - run: Compress-Archive -Path dist\DFCC -DestinationPath DFCC-windows.zip
+      - run: pyinstaller --noconfirm --distpath dist_onefile --workpath build_onefile packaging/dfcc_onefile.spec
+      - run: dist_onefile\DFCC.exe --version
       - uses: actions/upload-artifact@v4
-        with: { name: DFCC-windows, path: DFCC-windows.zip }
+        with:
+          name: DFCC-windows
+          path: |
+            DFCC-windows.zip
+            dist_onefile/DFCC.exe
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.tag }}
-          files: DFCC-windows.zip
+          files: |
+            DFCC-windows.zip
+            dist_onefile/DFCC.exe
           prerelease: true

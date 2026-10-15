@@ -3,6 +3,8 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+dist_onefile/
+build_onefile/
 build_venv/
 .venv/
 .pytest_cache/
@@ -10,3 +12,6 @@ build_venv/
 *.lock
 # outputs of the example runs
 examples/*/output/
+# files written by GDAL / ArcGIS when opening data or toolboxes
+*.aux.xml
+*.pyt.xml

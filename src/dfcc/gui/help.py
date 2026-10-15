@@ -18,7 +18,7 @@ code { background:#16293a; color:#ffd166; padding:0 3px; } .note { background:#1
 
 SECTIONS = [
     ("overview", "Overview"), ("workflow", "Workflow"), ("start", "Quick start"), ("data", "1 · Data"), ("proc", "2 · DF procedure"),
-    ("classes", "Channel classes"), ("density", "Initiation density"), ("part2", "3 · Main channels & runout"),
+    ("advanced", "Advanced · resolution"), ("classes", "Channel classes"), ("density", "Initiation density"), ("part2", "3 · Main channels & runout"),
     ("rule", "Runout energy rule"), ("msf", "MSF initiation points"), ("outputs", "Output files"), ("cli", "Command line & config"),
     ("plugins", "QGIS · ArcGIS · pip · exe"), ("tips", "Tips & troubleshooting"), ("about", "About / licence"),
 ]
@@ -55,16 +55,50 @@ and proposes initiation points snapped on the network for models such as MSF.</p
 <tr><td>Output</td><td>Folder for all results (created if missing).</td></tr>
 <tr><td>Prefix</td><td>Optional text added to every output file name.</td></tr></table>
 <div class="note">Tip: do not clip the DTM with a 1-cell-wide neck just above a fan or a confluence; the flow stops at such a neck. Use the full DTM and a pour point / <i>Extend past outlet</i> instead.</div>
+<div class="warn"><b>DTM resolution.</b> The default thresholds come from literature based on DTMs of about <b>10 m</b> (not LiDAR) and describe
+<b>reach-scale</b> slopes. With a very fine DTM (below 5 m DFCC shows a warning) read <a href="#advanced">Advanced · resolution</a>.</div>
 
 <a name="proc"></a><h2>2 · DF procedure</h2>
 <table><tr><th>Parameter</th><th>Meaning</th></tr>
-<tr><td>Channel threshold</td><td>Channels start where <code>S<sup>m</sup>·A<sup>n</sup> ≥ T</code> (slope × √contributing area, upslope maximum), default T = 50 (m = 1, n = 0.5). Lower = denser network; scale it with the resolution (e.g. 8 for a 10 m DTM in the Avisio test).</td></tr>
+<tr><td>Channel threshold</td><td>Channels start where <code>S<sup>m</sup>·A<sup>n</sup> ≥ T</code> (slope × √contributing area, upslope maximum), default T = 50 (m = 1, n = 0.5).
+As in TauDEM, <b>A is counted in cells</b>, so T depends on the cell size. Lower = denser network; calibrate it on the observed channel heads (e.g. 8 for a 10 m DTM in the Avisio test).</td></tr>
 <tr><td>Cell size from DTM</td><td>Untick to override the cell size.</td></tr>
 <tr><td>Kernel density radius</td><td>Search radius (m) of the quartic (Silverman) kernel used for the initiation-point density. Default 50 m.</td></tr>
 <tr><td>Fill depressions</td><td>Optional pre-processing, identical to ArcGIS <i>Fill</i>. The procedure itself always applies TauDEM PitRemove.</td></tr>
 <tr><td>Save intermediate rasters</td><td>Also writes <code>fel, p, slp, sd8, ad8, sa, ssa, src, inDF</code>.</td></tr></table>
 
+<a name="advanced"></a><h2>Advanced · DTM resolution and custom thresholds</h2>
+<div class="warn"><b>Read before changing these values.</b> The defaults reproduce the original Procedura DF (Cavalli et al., 2017). Its thresholds
+(initiation curve <code>S &gt; 0.32·A<sup>−0.2</sup></code>, classes at 8° and 3°, 38° upper limit) come from literature based on DTMs of about
+<b>10 m</b> resolution, <b>not LiDAR</b>: Horton et al. (2013) consider a 10 m DEM a good compromise, after Zhang &amp; Montgomery (1994) and Quinn et al. (1995).
+The slopes they refer to — above all the non-linear area–slope initiation curve — are <b>reach-scale</b> channel slopes, not the very local slope of a
+boulder, a step or a vertical drop. A very fine DTM (e.g. 0.5–2.5 m LiDAR) inevitably resolves such features and alters slopes, classes and the
+representativeness of the thresholds (Vianello et al., 2009; Kienzle, 2004). With fine DTMs consider <b>generalizing the DTM to 5–10 m</b>, and change
+the thresholds only after a calibration on field data.</div>
+<h3>DTM generalization (pre-processing)</h3>
+<p>Tick the group in the <b>Advanced</b> tab, set the <b>target cell size</b> (larger than the DTM cell) and the method. The DTM is aggregated first;
+fill, flow directions and the whole procedure then run on the generalized DTM, saved as <code>DTM_generalized.tif</code>.</p>
+<table><tr><th>Method</th><th>Use</th></tr>
+<tr><td>average</td><td>area-weighted mean of the input cells — the standard aggregation (recommended)</td></tr>
+<tr><td>median</td><td>median of the input cells centred in the new cell: robust to spikes, residual vegetation/buildings and isolated boulders</td></tr>
+<tr><td>bilinear, cubic</td><td>smooth GDAL interpolators (cubic can slightly overshoot)</td></tr></table>
+<p class="sub">average and median are computed by DFCC itself and give the same result everywhere (stand-alone, pip, QGIS, ArcGIS).</p>
+<p><b>Rescale the channel threshold</b> (on by default): A is counted in cells, so the threshold is multiplied by <code>(old cell / new cell)<sup>2n</sup></code>
+to keep the same <code>S<sup>m</sup>·A<sup>n</sup></code> with A in m² (50 at 2.5 m → 12.5 at 10 m). The network still changes with resolution: check it.</p>
+<h3>Custom thresholds</h3>
+<table><tr><th>Setting</th><th>Default</th><th>Meaning</th></tr>
+<tr><td>Slope exponent m, area exponent n</td><td>1, 0.5</td><td>Channel extraction on <code>S<sup>m</sup>·A<sup>n</sup></code></td></tr>
+<tr><td>Initiation coefficient k, exponent e</td><td>0.32, −0.2</td><td>Initiation where <code>S &gt; k·A<sup>e</sup></code>, A in km²</td></tr>
+<tr><td>Max initiation area</td><td>20 km²</td><td>No initiation above this contributing area</td></tr>
+<tr><td>Propagation / slowing</td><td>0.1405 (8°)</td><td>Boundary between classes 1 and 3</td></tr>
+<tr><td>Slowing / stop</td><td>0.0524 (3°)</td><td>Boundary between classes 3 and 4</td></tr>
+<tr><td>Max slope classified</td><td>0.7812 (38°)</td><td>Steeper cells are not classified</td></tr></table>
+<p>Slopes are tangents (m/m); the equivalent angle is shown next to each box. Inconsistent values are refused
+(<code>0 &lt; stop &lt; slowing &lt; max slope</code>). When any value differs from the default the tab shows <b>●</b>, the console lists the custom values and
+they are stored in the JSON configuration: the result is <i>not</i> the standard Procedura DF. <b>Reset to defaults</b> restores everything.</p>
+
 <a name="classes"></a><h2>Channel classes</h2>{img("classes.png", 640)}
+<p class="sub">Default thresholds below; all of them can be changed in the <a href="#advanced">Advanced</a> tab.</p>
 <table><tr><th>Value</th><th>Class</th><th>Colour</th><th>Condition (S = D∞ slope, A = area in km²)</th></tr>
 <tr><td>1</td><td>Propagation</td><td style="color:#1f5fbf">blue</td><td>all other channel cells</td></tr>
 <tr><td>2</td><td>Initiation</td><td style="color:#d62828">red</td><td><code>S &gt; 0.32·A<sup>−0.2</sup></code> and A &lt; 20 km²</td></tr>
@@ -131,11 +165,12 @@ dropped; <code>keep = 0</code>, <code>dropped_by</code> gives the covering point
 <a name="cli"></a><h2>Command line and configuration</h2>
 <p>The same engine runs without the GUI (the executable accepts the same commands):</p>
 <p><code>dfcc run dtm.tif -o out --runout</code><br><code>dfcc run dtm.tif -o out -t 8 --pour-points outlet.shp --extend-polygon fan.shp</code><br>
-<code>dfcc run --config cfg.json -o out2</code><br><code>dfcc fill dtm.tif filled.tif</code> · <code>dfcc --help</code></p>
+<code>dfcc run --config cfg.json -o out2</code><br><code>dfcc run lidar.tif -o out --generalize 10 --generalize-method median</code><br>
+<code>dfcc run dtm.tif -o out --s-slow 0.1763 --s-stop 0.0699</code> (classes at 10° and 4°)<br><code>dfcc fill dtm.tif filled.tif</code> · <code>dfcc run --help</code></p>
 
 <a name="plugins"></a><h2>QGIS · ArcGIS · pip · executable</h2>
 <table><tr><th>Where</th><th>How</th></tr>
-<tr><td>pip</td><td><code>pip install dfcc</code> (or <code>"dfcc[gui]"</code>) – commands <code>dfcc</code> and <code>dfcc-gui</code>.</td></tr>
+<tr><td>pip</td><td><code>pip install "dfcc[gui] @ git+https://github.com/HydrogeomorphologyTools/DFCC"</code> (without <code>[gui]</code>: command line only) – commands <code>dfcc</code> and <code>dfcc-gui</code>.</td></tr>
 <tr><td>QGIS ≥ 3.22</td><td>Copy <code>qgis_plugin/dfcc_qgis</code> into the QGIS plugins folder; the algorithm appears in <i>Processing → DFCC</i>. It uses the python package, or the executable (variable <code>DFCC_EXE</code>).</td></tr>
 <tr><td>ArcGIS Pro</td><td>Add <code>arcgis_toolbox/DFCC.pyt</code> (python package or <code>DFCC_EXE</code>). ArcMap 10.x (Python 2.7): use the GUI/CLI.</td></tr>
 <tr><td>Executable</td><td><code>DFCC.exe</code>: no arguments = this GUI; with arguments = command line.</td></tr></table>
@@ -149,13 +184,20 @@ dropped; <code>keep = 0</code>, <code>dropped_by</code> gives the covering point
 
 <a name="about"></a><h2>About</h2>
 <p><b>DFCC {__version__}</b> – Debris-Flow Channel Classification<br>
-<b>Authors:</b> Stefano Crema (contact: stefano.crema@cnr.it), Marco Cavalli, Alessandro Sarretta – CNR GEO, 2026.<br>Source code, issues and releases: <a href="https://github.com/HydrogeomorphologyTools/DFCC">github.com/HydrogeomorphologyTools/DFCC</a> · version 0.3.2 is a <i>testing</i> release.</p>
+<b>Authors:</b> Stefano Crema (contact: stefano.crema@cnr.it), Marco Cavalli, Alessandro Sarretta – CNR GEO, 2026.<br>Source code, issues and releases: <a href="https://github.com/HydrogeomorphologyTools/DFCC">github.com/HydrogeomorphologyTools/DFCC</a> · version {__version__} is a <i>testing</i> release.</p>
 <p>GPL-2.0-or-later · D8 / D∞ routines derive from the native rewrites of <i>SedInConnect 3.2</i> (HydrogeomorphologyTools), themselves ports of TauDEM (D. Tarboton).
 Method: <i>Procedura DF</i> (Cavalli, Crema, Viero, Marchi – CNR). Details in <code>docs/METHOD.md</code>.</p>
 <h3>Bibliography</h3>
-<p>GIS tools for preliminary debris-flow assessment at regional scale. <i>Journal of Mountain Science</i>, 14(12), 2017.
-<a href="https://link.springer.com/article/10.1007/s11629-017-4573-y">doi:10.1007/s11629-017-4573-y</a></p>
+<p>Cavalli, M., Crema, S., Trevisani, S., Marchi, L. (2017). GIS tools for preliminary debris-flow assessment at regional scale.
+<i>Journal of Mountain Science</i> 14(12), 2498–2510. <a href="https://doi.org/10.1007/s11629-017-4573-y">doi:10.1007/s11629-017-4573-y</a></p>
 <p>If you use DFCC, please cite the paper above and this software (Crema, Cavalli, Sarretta, 2026).</p>
+<p class="sub">Cited in this Help (complete list with the sources of every threshold in the README and in <code>docs/METHOD.md</code>):</p>
+<ul class="sub">
+<li>Horton, P., Jaboyedoff, M., Rudaz, B., Zimmermann, M. (2013). Flow-R, a model for susceptibility mapping of debris flows and other gravitational hazards at a regional scale. <i>Nat. Hazards Earth Syst. Sci.</i> 13(4), 869–885. doi:10.5194/nhess-13-869-2013</li>
+<li>Kienzle, S. (2004). The effect of DEM raster resolution on first order, second order and compound terrain derivatives. <i>Transactions in GIS</i> 8(1), 83–111. doi:10.1111/j.1467-9671.2004.00169.x</li>
+<li>Quinn, P.F., Beven, K.J., Lamb, R. (1995). The ln(a/tan β) index: how to calculate it and how to use it within the TOPMODEL framework. <i>Hydrol. Process.</i> 9(2), 161–182. doi:10.1002/hyp.3360090204</li>
+<li>Vianello, A., Cavalli, M., Tarolli, P. (2009). LiDAR-derived slopes for headwater channel network analysis. <i>Catena</i> 76(2), 97–106. doi:10.1016/j.catena.2008.09.012</li>
+<li>Zhang, W., Montgomery, D.R. (1994). Digital elevation model grid size, landscape representation, and hydrologic simulations. <i>Water Resour. Res.</i> 30(4), 1019–1028. doi:10.1029/93WR03553</li></ul>
 </body></html>"""
 
 

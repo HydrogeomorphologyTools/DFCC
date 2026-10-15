@@ -40,4 +40,7 @@ def warmup(log=None):
         for br in ("area", "longest", "highest"):
             part2.analyse(res, part2.RunoutParams(min_area_km2=0.0, max_area_km2=1e3, main_branch=br, extend_downstream_m=100.0),
                           str(td / "o"), log=lambda *a: None)
+        from .core import resample                     # DTM generalization kernels (average, median)
+        for m in ("average", "median"):
+            resample.generalize(g, cell * 2.5, m)
     _done = True

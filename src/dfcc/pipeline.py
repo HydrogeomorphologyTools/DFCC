@@ -6,8 +6,10 @@ import time
 import numpy as np
 
 from . import io as dio
-from .core import hydro, classify, density, network
+from .core import hydro, classify, density, network, resample
 from .core.classify import CLASS_NAMES
+
+FINE_CELL_WARNING_M = 5.0    # below this cell size, warn that the default thresholds come from ~10 m DTMs
 
 
 @dataclass
@@ -24,6 +26,17 @@ class Params:
     write_network: bool = True
     write_high_density: bool = True
     prefix: str = ""
+    # advanced: channel classification thresholds (defaults = original Procedura DF, see core/classify.py)
+    s_max: float = classify.S_MAX                  # cells steeper than this are not classified
+    s_dep_max: float = classify.S_DEP_MAX          # propagation / slowing boundary
+    s_stop: float = classify.S_STOP                # slowing / stop boundary
+    wb_k: float = classify.WB_K                    # initiation: s > wb_k * A^wb_exp
+    wb_exp: float = classify.WB_EXP
+    area_max_km2: float = classify.AREA_MAX_KM2    # initiation only below this drainage area
+    # optional pre-processing: generalize (aggregate) the DTM to a coarser cell size before fill / flow directions
+    generalize_cell: float | None = None           # target cell size in map units; None = use the DTM as it is
+    generalize_method: str = resample.DEFAULT_METHOD   # average | median | bilinear | cubic
+    generalize_rescale_threshold: bool = True      # A is in cells: rescale the threshold to keep the same S^m * A(m2)^n
 
     def to_dict(self):
         return asdict(self)
@@ -53,6 +66,7 @@ def _noop(*a, **k):
 
 
 def run(par: Params, log=print, progress=_noop) -> Result:
+    classify.check_thresholds(par.s_max, par.s_dep_max, par.s_stop, par.wb_k, par.area_max_km2)   # fail before any work
     out = Path(par.outdir)
     out.mkdir(parents=True, exist_ok=True)
     T = {}
@@ -66,7 +80,26 @@ def run(par: Params, log=print, progress=_noop) -> Result:
 
     t = time.perf_counter()
     g = dio.read_raster(par.dtm)
-    cell = float(par.resolution or g.cell)
+    res_override = par.resolution
+    threshold = par.threshold
+    if par.generalize_cell:
+        c0, shp0 = g.cell, g.shape
+        g = resample.generalize(g, float(par.generalize_cell), par.generalize_method)
+        if res_override:
+            log(f"Note: cell size override ({res_override}) ignored, the generalized DTM has cell {g.cell}")
+            res_override = None
+        dio.write_raster(f("DTM_generalized.tif"), g, g.data, g.nodata, "float32")
+        files["DTM_generalized"] = f("DTM_generalized.tif")
+        log(f"Pre-processing: DTM generalized from {c0:g} m ({shp0[1]}x{shp0[0]}) to {g.cell:g} m ({g.shape[1]}x{g.shape[0]}), "
+            f"method '{par.generalize_method}' -> DTM_generalized.tif")
+        if par.generalize_rescale_threshold:
+            threshold = par.threshold * (c0 / g.cell) ** (2.0 * par.area_exp)
+            log(f"  channel threshold rescaled {par.threshold:g} -> {threshold:.4g} (A is counted in cells: same S^m*A^n with A in m2)")
+    cell = float(res_override or g.cell)
+    if cell < FINE_CELL_WARNING_M:
+        log(f"WARNING: cell size {cell:g} m. The default thresholds were derived from ~10 m (non-LiDAR) DTMs and assume "
+            f"reach-scale slopes; very fine DTMs resolve local steps (boulders, check dams) that alter slopes and classes. "
+            f"Consider generalizing the DTM (e.g. to 5-10 m) or re-calibrating the thresholds.")
     nd = g.nodata
     dem = np.ascontiguousarray(g.data, dtype=np.float32)
     valid = hydro.valid_mask(dem, nd)
@@ -105,15 +138,20 @@ def run(par: Params, log=print, progress=_noop) -> Result:
     ad8 = hydro.area_d8(p)
     sa = hydro.slope_area(sd8, ad8, par.slope_exp, par.area_exp)
     ssa = hydro.max_upslope(p, sa)
-    src = hydro.threshold_stream(ssa, par.threshold)
+    src = hydro.threshold_stream(ssa, threshold)
     tick("stream", t)
     log(f"Contributing area D8 / slope-area / upslope maximum done; largest drainage area {float(ad8.max()) * cell * cell / 1e6:.3f} km2")
-    log(f"Channel network: {int((src == 1).sum())} cells (threshold {par.threshold}, exponents m={par.slope_exp}, n={par.area_exp})")
+    log(f"Channel network: {int((src == 1).sum())} cells (threshold {threshold:g}, exponents m={par.slope_exp}, n={par.area_exp})")
     progress(0.5, "Channel network")
 
     t = time.perf_counter()
-    cls, indf = classify.classify_network(src, slp, ad8, cell)
+    cls, indf = classify.classify_network(src, slp, ad8, cell, par.s_max, par.s_dep_max, par.s_stop,
+                                          par.wb_k, par.wb_exp, par.area_max_km2)
     tick("classify", t)
+    custom = [k for k in ("s_max", "s_dep_max", "s_stop", "wb_k", "wb_exp", "area_max_km2")
+              if getattr(par, k) != Params.__dataclass_fields__[k].default]
+    if custom:
+        log("Custom classification thresholds: " + ", ".join(f"{k}={getattr(par, k)}" for k in custom))
     counts = {CLASS_NAMES[k]: int((cls == k).sum()) for k in CLASS_NAMES}
     ncl = max(1, int((cls > 0).sum()))
     log(f"Classification ({T['classify']:.2f} s): " + ", ".join(f"{k} {v} ({100.0 * v / ncl:.1f}%)" for k, v in counts.items()))

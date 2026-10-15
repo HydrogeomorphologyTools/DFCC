@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dfcc"
-version = "0.3.2"
+version = "0.4.0"
 description = "DFCC - Debris-Flow Channel Classification: debris-flow propensity of the channel network, initiation density and morphometric runout (stand-alone implementation of Procedura DF)"
 readme = "README.md"
 requires-python = ">=3.9"

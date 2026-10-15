@@ -165,13 +165,20 @@ class MainWindow(QMainWindow):
         return s
 
     def _side(self):
+        side = QWidget(objectName="side")
+        side.setFixedWidth(430)
+        outer = QVBoxLayout(side)
+        outer.setContentsMargins(8, 8, 8, 12)
+        outer.setSpacing(6)
+        self.side_tabs = QTabWidget()
+        outer.addWidget(self.side_tabs, 1)
         sc = QScrollArea()
         sc.setWidgetResizable(True)
-        sc.setFixedWidth(400)
+        sc.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         w = QWidget(objectName="side")
         sc.setWidget(w)
         v = QVBoxLayout(w)
-        v.setContentsMargins(14, 12, 14, 14)
+        v.setContentsMargins(6, 4, 16, 6)
         v.setSpacing(6)
 
         g = QGroupBox("1 · Data")
@@ -194,7 +201,8 @@ class MainWindow(QMainWindow):
         g = QGroupBox("2 · DF procedure")
         f = QFormLayout(g)
         self.thr = self._dspin(50, 1, 1e6, 5, 1)
-        self.thr.setToolTip("Slope-area threshold for channel extraction (S^m · A^n)")
+        self.thr.setToolTip("Slope-area threshold for channel extraction: S^m · A^n, with S in m/m and A = contributing area "
+                            "in number of cells (TauDEM AreaD8), so the value depends on the cell size")
         f.addRow("Channel threshold", self.thr)
         self.res_auto = QCheckBox("cell size from DTM")
         self.res_auto.setChecked(True)
@@ -254,6 +262,10 @@ class MainWindow(QMainWindow):
         self.prune.setChecked(True)
         f.addRow(self.prune)
         v.addWidget(g)
+        v.addStretch(1)
+        self.side_tabs.addTab(sc, "Parameters")
+        self.side_tabs.addTab(self._advanced(), "Advanced")
+        self._adv_changed()
 
         row = QHBoxLayout()
         b1 = QPushButton("Save config…")
@@ -262,15 +274,172 @@ class MainWindow(QMainWindow):
         b2.clicked.connect(self._load_cfg)
         row.addWidget(b1)
         row.addWidget(b2)
-        v.addLayout(row)
+        outer.addLayout(row)
         self.btn = QPushButton("▶  Run DFCC", objectName="run")
         self.btn.clicked.connect(self.start)
-        v.addWidget(self.btn)
+        outer.addWidget(self.btn)
         b3 = QPushButton("Open output folder")
         b3.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(self.outdir.text() or ".")))
-        v.addWidget(b3)
+        outer.addWidget(b3)
+        return side
+
+    # ------------------------------------------------------------ advanced tab
+    ADV_KEYS = ("slope_exp", "area_exp", "wb_k", "wb_exp", "area_max_km2", "s_dep_max", "s_stop", "s_max")
+
+    def _slope_row(self, spin):
+        """Slope spin box (m/m) with its equivalent angle in degrees next to it."""
+        import math
+        w = QWidget()
+        r = QHBoxLayout(w)
+        r.setContentsMargins(0, 0, 0, 0)
+        r.addWidget(spin, 1)
+        lab = QLabel(objectName="note")
+        lab.setMinimumWidth(56)
+        upd = lambda val: lab.setText(f"= {math.degrees(math.atan(val)):.1f}°")
+        spin.valueChanged.connect(upd)
+        upd(spin.value())
+        r.addWidget(lab)
+        return w
+
+    def _advanced(self):
+        from ..core import resample
+        D = pipeline.Params.__dataclass_fields__
+        sc = QScrollArea()
+        sc.setWidgetResizable(True)
+        sc.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        w = QWidget(objectName="side")
+        sc.setWidget(w)
+        v = QVBoxLayout(w)
+        v.setContentsMargins(6, 4, 16, 6)
+        v.setSpacing(6)
+        warn = QLabel("<b>Read before changing these values.</b> The defaults reproduce the original Procedura DF "
+                      "(Cavalli et al., 2017). Its thresholds come from literature based on DTMs of about <b>10 m</b> "
+                      "resolution (not LiDAR): slopes are meant to be <b>reach-scale</b> slopes, not the very local slope "
+                      "of a boulder step or a vertical drop. Very fine (LiDAR) DTMs inevitably alter slopes, thresholds and "
+                      "representativeness: consider generalizing the DTM below, and change the thresholds only after a "
+                      "calibration on field data.", objectName="warn")
+        warn.setWordWrap(True)
+        v.addWidget(warn)
+
+        g = QGroupBox("DTM generalization (pre-processing)")
+        g.setCheckable(True)
+        g.setChecked(False)
+        g.setToolTip("Aggregate the DTM to a coarser cell size; fill, flow directions and the whole procedure then run on it")
+        self.g_gen = g
+        f = QFormLayout(g)
+        self.gen_cell = self._dspin(10.0, 0.1, 1000, 1, 2, " m")
+        self.gen_cell.setToolTip("Output cell size (must be larger than the DTM cell size)")
+        f.addRow("Target cell size", self.gen_cell)
+        self.gen_method = QComboBox()
+        self.gen_method.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.gen_method.setMinimumContentsLength(8)
+        for i, (k, (_, desc)) in enumerate(resample.METHODS.items()):
+            self.gen_method.addItem(k, k)
+            self.gen_method.setItemData(i, desc, Qt.ToolTipRole)
+        f.addRow("Method", self.gen_method)
+        self.gen_desc = QLabel(objectName="note")
+        self.gen_desc.setWordWrap(True)
+        self.gen_method.currentIndexChanged.connect(lambda i: self.gen_desc.setText(resample.METHODS[self.gen_method.itemData(i)][1]))
+        self.gen_desc.setText(resample.METHODS[self.gen_method.currentData()][1])
+        f.addRow(self.gen_desc)
+        self.gen_rescale = QCheckBox("Rescale the channel threshold")
+        self.gen_rescale.setChecked(True)
+        self.gen_rescale.setToolTip("The contributing area is counted in cells: rescaling keeps the same S^m · A^n with A in m², "
+                                    "i.e. threshold × (old cell / new cell)^(2n)")
+        f.addRow(self.gen_rescale)
+        self.gen_info = QLabel(objectName="note")
+        self.gen_info.setWordWrap(True)
+        f.addRow(self.gen_info)
+        v.addWidget(g)
+
+        g = QGroupBox("Channel network extraction")
+        f = QFormLayout(g)
+        self.adv = {}
+        self.adv["slope_exp"] = self._dspin(D["slope_exp"].default, 0.0, 5, 0.1, 3)
+        self.adv["area_exp"] = self._dspin(D["area_exp"].default, 0.0, 5, 0.05, 3)
+        f.addRow("Slope exponent m", self.adv["slope_exp"])
+        f.addRow("Area exponent n", self.adv["area_exp"])
+        lab = QLabel("Channel cells: max upstream S^m · A^n ≥ threshold (S in m/m, A in cells).", objectName="note")
+        lab.setWordWrap(True)
+        f.addRow(lab)
+        v.addWidget(g)
+
+        g = QGroupBox("Channel classes")
+        f = QFormLayout(g)
+        self.adv["wb_k"] = self._dspin(D["wb_k"].default, 0.001, 10, 0.01, 4)
+        self.adv["wb_exp"] = self._dspin(D["wb_exp"].default, -3, 3, 0.05, 4)
+        self.adv["area_max_km2"] = self._dspin(D["area_max_km2"].default, 0.01, 1e5, 1, 2, " km²")
+        lab = QLabel("Initiation (class 2) where S > k · A^e, A in km², and A < max area.", objectName="note")
+        lab.setWordWrap(True)
+        f.addRow(lab)
+        f.addRow("Initiation coefficient k", self.adv["wb_k"])
+        f.addRow("Initiation exponent e", self.adv["wb_exp"])
+        f.addRow("Max initiation area", self.adv["area_max_km2"])
+        self.adv["s_dep_max"] = self._dspin(D["s_dep_max"].default, 0.0001, 5, 0.005, 4, " m/m")
+        self.adv["s_stop"] = self._dspin(D["s_stop"].default, 0.0001, 5, 0.005, 4, " m/m")
+        self.adv["s_max"] = self._dspin(D["s_max"].default, 0.0001, 10, 0.01, 4, " m/m")
+        self.adv["s_dep_max"].setToolTip("Below this slope a channel cell is 'slowing' (class 3); above it, propagation (class 1)")
+        self.adv["s_stop"].setToolTip("Below this slope a channel cell is 'stop' (class 4)")
+        self.adv["s_max"].setToolTip("Cells steeper than this are not classified (treated as rock walls)")
+        f.addRow("Propagation / slowing", self._slope_row(self.adv["s_dep_max"]))
+        f.addRow("Slowing / stop", self._slope_row(self.adv["s_stop"]))
+        f.addRow("Max slope classified", self._slope_row(self.adv["s_max"]))
+        v.addWidget(g)
+
+        row = QHBoxLayout()
+        self.adv_state = QLabel(objectName="note")
+        self.adv_state.setWordWrap(True)
+        row.addWidget(self.adv_state, 1)
+        b = QPushButton("Reset to defaults")
+        b.clicked.connect(self._adv_reset)
+        row.addWidget(b)
+        v.addLayout(row)
         v.addStretch(1)
+        for s in self.adv.values():
+            s.valueChanged.connect(self._adv_changed)
+        self.g_gen.toggled.connect(self._adv_changed)
+        self.gen_cell.valueChanged.connect(self._adv_changed)
+        self.gen_method.currentIndexChanged.connect(self._adv_changed)
+        self.gen_rescale.toggled.connect(self._adv_changed)
+        self.thr.valueChanged.connect(self._adv_changed)
+        self.resv.valueChanged.connect(self._adv_changed)
         return sc
+
+    def _adv_custom(self):
+        D = pipeline.Params.__dataclass_fields__
+        return [k for k in self.ADV_KEYS if abs(self.adv[k].value() - D[k].default) > 1e-9]
+
+    def _adv_changed(self, *_):
+        if self.side_tabs.count() < 2:
+            return
+        custom = self._adv_custom()
+        gen = self.g_gen.isChecked()
+        self.side_tabs.setTabText(1, "Advanced  ●" if (custom or gen) else "Advanced")
+        if custom:
+            self.adv_state.setObjectName("custom")
+            self.adv_state.setText("Custom values: results are NOT the standard Procedura DF (" + ", ".join(custom) + ")")
+        else:
+            self.adv_state.setObjectName("note")
+            self.adv_state.setText("Default values (original Procedura DF)")
+        self.adv_state.style().unpolish(self.adv_state)
+        self.adv_state.style().polish(self.adv_state)
+        c0 = self.resv.value()
+        if not gen:
+            self.gen_info.setText("Off: the DTM is used at its native resolution.")
+        elif self.gen_cell.value() <= c0:
+            self.gen_info.setText(f"⚠ the target cell must be larger than the DTM cell ({c0:g} m)")
+        else:
+            n = self.adv["area_exp"].value()
+            thr = self.thr.value() * (c0 / self.gen_cell.value()) ** (2 * n) if self.gen_rescale.isChecked() else self.thr.value()
+            self.gen_info.setText(f"DTM {c0:g} m → {self.gen_cell.value():g} m · effective channel threshold {thr:.4g}")
+
+    def _adv_reset(self):
+        D = pipeline.Params.__dataclass_fields__
+        for k in self.ADV_KEYS:
+            self.adv[k].setValue(D[k].default)
+        self.g_gen.setChecked(False)
+        self.gen_rescale.setChecked(True)
+        self.gen_method.setCurrentIndex(max(0, self.gen_method.findData(D["generalize_method"].default)))
 
     def _center(self):
         self.tabs = QTabWidget()
@@ -389,7 +558,11 @@ class MainWindow(QMainWindow):
         try:
             from .. import io as dio
             g = dio.read_raster(self.dtm.text())
-            self.info.setText(f"{g.shape[1]} × {g.shape[0]} cells · cell {g.cell:g} m · {'CRS ok' if g.wkt else 'CRS missing'}")
+            txt = f"{g.shape[1]} × {g.shape[0]} cells · cell {g.cell:g} m · {'CRS ok' if g.wkt else 'CRS missing'}"
+            if g.cell < pipeline.FINE_CELL_WARNING_M:
+                txt += ("<br><span style='color:#f4723c'>⚠ Fine DTM: the default thresholds come from ~10 m DTMs and assume "
+                        "reach-scale slopes. See <b>Advanced › DTM generalization</b>.</span>")
+            self.info.setText(txt)
             self.resv.setValue(g.cell)
         except Exception as e:
             self.info.setText(f"⚠ {e}")
@@ -397,7 +570,13 @@ class MainWindow(QMainWindow):
     def params(self):
         par = pipeline.Params(self.dtm.text(), self.outdir.text(), self.thr.value(),
                               None if self.res_auto.isChecked() else self.resv.value(), self.prefill.isChecked(), self.kd.value(),
-                              keep_intermediate=self.keep.isChecked(), write_network=True, prefix=self.prefix.text())
+                              keep_intermediate=self.keep.isChecked(), write_network=True, prefix=self.prefix.text(),
+                              **{k: self.adv[k].value() for k in self.ADV_KEYS},
+                              generalize_cell=self.gen_cell.value() if self.g_gen.isChecked() else None,
+                              generalize_method=self.gen_method.currentData(),
+                              generalize_rescale_threshold=self.gen_rescale.isChecked())
+        from ..core import classify
+        classify.check_thresholds(par.s_max, par.s_dep_max, par.s_stop, par.wb_k, par.area_max_km2)
         pps = None
         if self.pp.text():
             import shapefile
@@ -415,6 +594,13 @@ class MainWindow(QMainWindow):
         if par.resolution:
             self.resv.setValue(par.resolution)
         self.kd.setValue(par.kd_radius); self.prefill.setChecked(par.prefill); self.keep.setChecked(par.keep_intermediate)
+        for k in self.ADV_KEYS:
+            self.adv[k].setValue(getattr(par, k))
+        self.g_gen.setChecked(bool(par.generalize_cell))
+        if par.generalize_cell:
+            self.gen_cell.setValue(par.generalize_cell)
+        self.gen_method.setCurrentIndex(max(0, self.gen_method.findData(par.generalize_method)))
+        self.gen_rescale.setChecked(par.generalize_rescale_threshold)
         self.g_run.setChecked(en)
         self.minA.setValue(rp.min_area_km2); self.maxA.setValue(rp.max_area_km2); self.splA.setValue(rp.split_area_km2)
         self.fac.setValue(rp.energy_factor); self.rst.setValue(rp.min_restart_len_m)

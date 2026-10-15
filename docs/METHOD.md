@@ -1,10 +1,14 @@
 # DFCC – method, implementation choices and validation
 
+## 0. Optional pre-processing: DTM generalization
+`--generalize CELL` aggregates the DTM to a coarser grid before everything else (NoData ignored; upper-left corner kept, the last partial row/column dropped). `average` is the exact area-weighted mean (each input cell weighted by its overlap with the output cell) and `median` the median of the input cells whose centre falls in the output cell: both are computed by DFCC (numba), without GDAL and without needing the CRS, so they are identical with every back-end. `bilinear` and `cubic` use GDAL (rasterio `reproject` or `osgeo.gdal.Warp`); with a GDAL build that returns an empty raster (seen with the GDAL of ArcGIS Pro) DFCC stops with a clear message and writes `DTM_generalized.tif`. Fill, flow directions and the whole chain then run on it. The channel threshold is multiplied by `(c0/c1)^(2n)` (A is counted in cells) unless `--generalize-keep-threshold` is given. Rationale and references: *Resolution* in the section *Scientific basis of the thresholds* below.
+
 ## 1. Hydrological chain (replica of the ModelBuilder + TauDEM workflow)
 1. **PitRemove** (8-neighbour priority-flood; cells next to NoData or on the border drain out) — identical to TauDEM `pitremove` and to ArcGIS `Fill` (no z-limit).
 2. **D∞** (`slp`) and **D8** (`p`, `sd8`) TauDEM, including flat resolution.
 3. **AreaD8 -nc** (cells) → `ad8`; `sa = sd8^1 · ad8^0.5` (float32 as in the C++ code); **D8FlowPathExtremeUp -nc** (maximum upslope) → `ssa`; **Threshold** `ssa ≥ T` → `src` (network).
 4. Raster algebra: `s38 = slp (slp<0.7812)`, `akm2 = ad8·res²/1e6`, `WB = 0.32·akm2^-0.2`; initiation `s38>WB & akm2<20`; slowing `0.0524<s38<0.1405` minus `inDF8`; stop `s38<0.0524` → classified network (1 propagation, 2 initiation, 3 slowing, 4 stop).
+   All the constants above (and the exponents of step 3) are parameters with these defaults: `--s-max`, `--wb-k`, `--wb-exp`, `--max-init-area`, `--s-slow`, `--s-stop`, `--slope-exp`, `--area-exp` (`pipeline.Params`: `s_max`, `wb_k`, `wb_exp`, `area_max_km2`, `s_dep_max`, `s_stop`, `slope_exp`, `area_exp`). They are passed to the numba kernel as float32, exactly like the original constants, so the defaults stay bit-identical to ArcGIS.
 5. **Density**: points = centres of the `inDF=1` cells (whole DTM), quartic (Silverman) kernel, 50 m radius, hectares, planar → `InitiationDensity` (points/ha).
 6. **High density**: zeros excluded, exact Fisher–Jenks natural breaks with 2 classes on the rest; the upper class = polygons.
 
@@ -53,7 +57,7 @@ Final stops are classified by where they occur: on the main channel (own energy)
 
 ## Authors and reference
 
-Stefano Crema, Marco Cavalli, Alessandro Sarretta — CNR GEO, 2026. Method: GIS tools for preliminary debris-flow assessment at regional scale, J. Mountain Sci. 14(12), 2017, doi:10.1007/s11629-017-4573-y.
+Stefano Crema, Marco Cavalli, Alessandro Sarretta — CNR GEO, 2026. Method: Cavalli, M., Crema, S., Trevisani, S., Marchi, L. (2017). GIS tools for preliminary debris-flow assessment at regional scale. J. Mountain Sci. 14(12), 2498-2510, doi:10.1007/s11629-017-4573-y.
 
 
 ### Tract phases and final stops (revised)
@@ -64,15 +68,18 @@ Each tract is labelled with a `phase`: 1 not activated, 2 flow, 3 stop, 4 stoppe
 
 DFCC reproduces the empirical, purely morphometric procedure of Cavalli et al. (2017); the thresholds are not tuned by the software but inherited from the literature below (section 1.1 of the paper). They can be re-parametrised for other settings, but the defaults replicate the original ArcGIS workflow bit by bit.
 
-**Channel network - slope-area threshold.** Channels are the cells exceeding a threshold of the Stream Power Index `SPI = A^0.5 · S` (A = drainage area in m², S = local slope in m/m; Marchi & Dalla Fontana 2005), computed on D8 flow directions (O'Callaghan & Mark 1984). Slope-area channel-initiation thresholds follow Montgomery & Dietrich (1992), Montgomery & Foufoula-Georgiou (1993) and Desmet et al. (1999). The threshold value (`-t`, default 50) must be calibrated on field observations and on the drainage density of the area. Local slope is the drop to the steepest-descent neighbour (Vianello et al. 2009).
+**Channel network - slope-area threshold.** Channels are the cells exceeding a threshold of the Stream Power Index `SPI = A^0.5 · S` (Marchi & Dalla Fontana 2005), computed on D8 flow directions (O'Callaghan & Mark 1984). As in the original TauDEM workflow (`AreaD8 -nc`, `SlopeArea`, `D8FlowPathExtremeUp`), **A is the D8 contributing area counted in cells** and S the D8 slope (m/m), so the threshold value depends on the cell size (see [Advanced parameters](#advanced-parameters-and-dtm-generalization)). Slope-area channel-initiation thresholds follow Montgomery & Dietrich (1992), Montgomery & Foufoula-Georgiou (1993) and Desmet et al. (1999). The threshold value (`-t`, default 50) must be calibrated on field observations and on the drainage density of the area. Local slope is the drop to the steepest-descent neighbour (Vianello et al. 2009).
 
 **Debris-flow initiation - area-slope threshold.** A network cell is a potential initiation point when its slope exceeds
 
 ```
-S = 0.32 · A^-0.2        (A in m², S in m/m)
+S = 0.32 · A^-0.2        (A = contributing area in km², S = local D∞ slope in m/m)
 ```
 
-the empirical envelope derived by Zimmermann et al. (1997) from debris-flow events in Switzerland, in the spirit of the models of Wichmann & Becht (2005) and Horton et al. (2013). Kaless (2006) verified it against initiation areas in the Autonomous Province of Trento (eastern Italian Alps). Two filters complete the rule: an upper local slope of **38°** (about the internal friction angle of alpine debris), which removes very steep bedrock-like cells where sediment is scarce, and an upper drainage-area limit above which channels are dominated by bedload and suspended transport (**10 km²** in the paper, after Marchi & D'Agostino 2004; the original ArcGIS model, and therefore DFCC's default, uses **20 km²**).
+the empirical envelope derived by Zimmermann et al. (1997) from debris-flow events in Switzerland, in the spirit of the models of Wichmann & Becht (2005) and Horton et al. (2013).
+The same curve is Eq. 1 of Horton et al. (2013) — `tan β = 0.32 · S_uca^-0.2`, S_uca in km², the lower limit for "rare" events in the central Alps,
+after Rickenmann & Zimmermann (1993) and Heinimann (1998) — which Horton et al. apply for S_uca < 2.5 km² and recommend using with a ~10 m DEM.
+The classification slope is the D∞ slope (Tarboton 1997). Kaless (2006) verified it against initiation areas in the Autonomous Province of Trento (eastern Italian Alps). Two filters complete the rule: an upper local slope of **38°** (about the internal friction angle of alpine debris), which removes very steep bedrock-like cells where sediment is scarce, and an upper drainage-area limit above which channels are dominated by bedload and suspended transport (**10 km²** in the paper, after Marchi & D'Agostino 2004; the original ArcGIS model, and therefore DFCC's default, uses **20 km²**).
 
 **Propagation, slowing and stop - slope classes.** Debris flows start depositing on slopes of roughly 6°-10° and usually stop at about 3°-5° (Benda 1985; Vandre 1985; Burton & Bathurst 1998). Following a cautionary approach, the remaining network cells are classified as
 
@@ -86,21 +93,32 @@ the empirical envelope derived by Zimmermann et al. (1997) from debris-flow even
 
 **Initiation density.** Initiation points are turned into a kernel-density map (50 m radius, points/ha) and split in two classes with natural breaks, to rank the most hazardous reaches (Cavalli et al. 2017).
 
+**Resolution.** These thresholds were developed with DTMs of about 10 m (Horton et al. 2013; Zhang & Montgomery 1994; Quinn et al. 1995) and describe
+reach-scale channel slopes. Slopes computed on very fine LiDAR DTMs are systematically different — steeper on local steps, flatter on the
+treads between them (Vianello et al. 2009; Kienzle 2004) — which shifts cells across the 8° / 3° boundaries and across the non-linear
+initiation curve. Generalize fine DTMs (5–10 m) or re-calibrate the thresholds.
+
 ### References
 
 * Benda, L.E. (1985). Behaviour and effect of debris flows on streams in the Oregon Coast Range. In: *Delineation of landslide, flash flood and debris flow hazards in Utah*, Utah Water Research Laboratory, Logan, 153-162.
-* Burton, A., Bathurst, J.C. (1998). Physically based modelling of shallow landslide sediment yield at a catchment scale. *Environmental Geology* 35, 89-99. <https://doi.org/10.1007/s002540050296>
+* Burton, A., Bathurst, J.C. (1998). Physically based modelling of shallow landslide sediment yield at a catchment scale. *Environmental Geology* 35(2-3), 89-99. <https://doi.org/10.1007/s002540050296>
 * Cavalli, M., Crema, S., Trevisani, S., Marchi, L. (2017). GIS tools for preliminary debris-flow assessment at regional scale. *Journal of Mountain Science* 14(12), 2498-2510. <https://doi.org/10.1007/s11629-017-4573-y>
-* Desmet, P.J.J., Poesen, J., Govers, G., et al. (1999). Importance of slope gradient and contributing area for optimal prediction of the initiation and trajectory of ephemeral gullies. *Catena* 37, 377-392. <https://doi.org/10.1016/S0341-8162(99)00027-2>
-* Horton, P., Jaboyedoff, M., Rudaz, B., et al. (2013). Flow-R, a model for susceptibility mapping of debris flows and other gravitational hazards at a regional scale. *Natural Hazards and Earth System Sciences* 13, 869-885. <https://doi.org/10.5194/nhess-13-869-2013>
+* Desmet, P.J.J., Poesen, J., Govers, G., Vandaele, K. (1999). Importance of slope gradient and contributing area for optimal prediction of the initiation and trajectory of ephemeral gullies. *Catena* 37(3-4), 377-392. <https://doi.org/10.1016/S0341-8162(99)00027-2>
+* Heinimann, H.R. (1998). *Methoden zur Analyse und Bewertung von Naturgefahren.* Umwelt-Materialien 85, BUWAL, Bern (in German); cited after Horton et al. (2013).
+* Horton, P., Jaboyedoff, M., Rudaz, B., Zimmermann, M. (2013). Flow-R, a model for susceptibility mapping of debris flows and other gravitational hazards at a regional scale. *Natural Hazards and Earth System Sciences* 13(4), 869-885. <https://doi.org/10.5194/nhess-13-869-2013>
 * Kaless, G. (2006). *Il torrente Sarca di Val Genova. Studio geomorfologico per la prevenzione e la mitigazione del rischio geo-idrologico.* Master thesis, University of Padova (in Italian).
-* Marchi, L., D'Agostino, V. (2004). Estimation of debris-flow magnitude in the Eastern Italian Alps. *Earth Surface Processes and Landforms* 29, 207-220. <https://doi.org/10.1002/esp.1027>
-* Marchi, L., Dalla Fontana, G. (2005). GIS morphometric indicators for the analysis of sediment dynamics in mountain basins. *Environmental Geology* 48, 218-228. <https://doi.org/10.1007/s00254-005-1292-4>
-* Montgomery, D.R., Dietrich, W.E. (1992). Channel initiation and the problem of landscape scale. *Science* 255, 826-830. <https://doi.org/10.1126/science.255.5046.826>
-* Montgomery, D.R., Foufoula-Georgiou, E. (1993). Channel network source representation using digital elevation models. *Water Resources Research* 29, 3925-3934. <https://doi.org/10.1029/93WR02463>
-* O'Callaghan, J.F., Mark, D.M. (1984). The extraction of drainage networks from digital elevation data. *Computer Vision, Graphics and Image Processing* 28, 323-344.
+* Kienzle, S. (2004). The effect of DEM raster resolution on first order, second order and compound terrain derivatives. *Transactions in GIS* 8(1), 83-111. <https://doi.org/10.1111/j.1467-9671.2004.00169.x>
+* Marchi, L., D'Agostino, V. (2004). Estimation of debris-flow magnitude in the Eastern Italian Alps. *Earth Surface Processes and Landforms* 29(2), 207-220. <https://doi.org/10.1002/esp.1027>
+* Marchi, L., Dalla Fontana, G. (2005). GIS morphometric indicators for the analysis of sediment dynamics in mountain basins. *Environmental Geology* 48(2), 218-228. <https://doi.org/10.1007/s00254-005-1292-4>
+* Montgomery, D.R., Dietrich, W.E. (1992). Channel initiation and the problem of landscape scale. *Science* 255(5046), 826-830. <https://doi.org/10.1126/science.255.5046.826>
+* Montgomery, D.R., Foufoula-Georgiou, E. (1993). Channel network source representation using digital elevation models. *Water Resources Research* 29(12), 3925-3934. <https://doi.org/10.1029/93WR02463>
+* O'Callaghan, J.F., Mark, D.M. (1984). The extraction of drainage networks from digital elevation data. *Computer Vision, Graphics, and Image Processing* 28(3), 323-344. <https://doi.org/10.1016/S0734-189X(84)80011-0>
+* Quinn, P.F., Beven, K.J., Lamb, R. (1995). The ln(a/tan β) index: how to calculate it and how to use it within the TOPMODEL framework. *Hydrological Processes* 9(2), 161-182. <https://doi.org/10.1002/hyp.3360090204>
+* Rickenmann, D., Zimmermann, M. (1993). The 1987 debris flows in Switzerland: documentation and analysis. *Geomorphology* 8(2-3), 175-189. <https://doi.org/10.1016/0169-555X(93)90036-2>
+* Tarboton, D.G. (1997). A new method for the determination of flow directions and upslope areas in grid digital elevation models. *Water Resources Research* 33(2), 309-319. <https://doi.org/10.1029/96WR03137>
 * Vandre, B.C. (1985). Rudd Creek debris flow. In: *Delineation of landslide, flash flood and debris flow hazards in Utah*, Utah Water Research Laboratory, Logan, 117-131.
-* Vianello, A., Cavalli, M., Tarolli, P. (2009). LiDAR-derived slopes for headwater channel network analysis. *Catena* 76, 97-106. <https://doi.org/10.1016/j.catena.2008.09.012>
+* Vianello, A., Cavalli, M., Tarolli, P. (2009). LiDAR-derived slopes for headwater channel network analysis. *Catena* 76(2), 97-106. <https://doi.org/10.1016/j.catena.2008.09.012>
 * Wichmann, V., Becht, M. (2005). Modelling of geomorphic processes in an alpine catchment. In: Atkinson, P.M., et al. (eds), *GeoDynamics*, 151-167.
+* Zhang, W., Montgomery, D.R. (1994). Digital elevation model grid size, landscape representation, and hydrologic simulations. *Water Resources Research* 30(4), 1019-1028. <https://doi.org/10.1029/93WR03553>
 * Zimmermann, M., Mani, P., Gamma, P., et al. (1997). *Murganggefahr und Klimaaenderung - ein GIS-basierter Ansatz.* Schlussbericht NFP 31, Zurich (in German).
 

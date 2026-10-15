@@ -40,6 +40,9 @@ QStatusBar {{ background: {C['bg']}; color: {C['muted']}; }}
 QScrollBar:vertical {{ background: transparent; width: 10px; }}
 QScrollBar::handle:vertical {{ background: {C['line']}; border-radius: 5px; min-height: 30px; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ height: 0; width: 0; }}
+QLabel#note {{ color: {C['muted']}; font-size: 9pt; }}
+QLabel#warn {{ color: #ffd9c7; background: #3a2318; border: 1px solid {C['ember']}; border-radius: 8px; padding: 8px; font-size: 9pt; }}
+QLabel#custom {{ color: {C['ember']}; font-weight: 600; }}
 QToolTip {{ background: {C['card']}; color: {C['ink']}; border: 1px solid {C['ice']}; }}
 """
 

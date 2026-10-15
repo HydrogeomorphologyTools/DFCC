@@ -20,6 +20,25 @@ def _add_run(sp):
     p.add_argument("--keep-intermediate", action="store_true", help="also write fel, p, slp, sd8, ad8, sa, ssa, src, inDF")
     p.add_argument("--no-network", action="store_true", help="skip the vector network (Network3D)")
     p.add_argument("--prefix", default="", help="output file prefix")
+    from .core import classify as C, resample as R
+    p.add_argument("--generalize", type=float, default=None, metavar="CELL",
+                   help="pre-processing: aggregate the DTM to this coarser cell size (map units) before fill and flow directions; "
+                        "the default thresholds come from ~10 m DTMs, so very fine (LiDAR) DTMs are worth generalizing")
+    p.add_argument("--generalize-method", choices=list(R.METHODS), default=R.DEFAULT_METHOD,
+                   help="; ".join(f"{k}: {v[1]}" for k, v in R.METHODS.items()))
+    p.add_argument("--generalize-keep-threshold", action="store_true",
+                   help="do not rescale the channel threshold when generalizing (by default it is rescaled, because the "
+                        "contributing area is counted in cells, so that S^m*A^n with A in m2 stays the same)")
+    a = p.add_argument_group("advanced: network extraction and channel classes (defaults = original Procedura DF; "
+                             "derived from ~10 m DTMs, change only after calibration)")
+    a.add_argument("--slope-exp", type=float, default=1.0, help="exponent m of S^m*A^n for channel extraction (default 1)")
+    a.add_argument("--area-exp", type=float, default=0.5, help="exponent n of S^m*A^n for channel extraction (default 0.5)")
+    a.add_argument("--wb-k", type=float, default=C.WB_K, help=f"initiation: S > k*A^e, coefficient k (default {C.WB_K})")
+    a.add_argument("--wb-exp", type=float, default=C.WB_EXP, help=f"initiation: S > k*A^e, exponent e (default {C.WB_EXP})")
+    a.add_argument("--max-init-area", type=float, default=C.AREA_MAX_KM2, help=f"initiation only where A < this, km2 (default {C.AREA_MAX_KM2:g})")
+    a.add_argument("--s-slow", type=float, default=C.S_DEP_MAX, help=f"propagation/slowing slope boundary, m/m (default {C.S_DEP_MAX})")
+    a.add_argument("--s-stop", type=float, default=C.S_STOP, help=f"slowing/stop slope boundary, m/m (default {C.S_STOP})")
+    a.add_argument("--s-max", type=float, default=C.S_MAX, help=f"cells steeper than this are not classified, m/m (default {C.S_MAX})")
     g = p.add_argument_group("part 2: main channel, runout and hot-spot points")
     g.add_argument("--runout", action="store_true", help="compute main channel + runout per basin and initiation hot-spot points")
     g.add_argument("--min-area", type=float, default=1.0, help="min basin area km2 (default 1)")
@@ -42,8 +61,12 @@ def _add_run(sp):
 
 def ap_defaults(parser):
     m = {"threshold": "threshold", "resolution": "resolution", "prefill": "prefill", "kd_radius": "kd_radius",
-         "keep_intermediate": "keep_intermediate", "prefix": "prefix"}
-    return {v: parser.get_default(k) for k, v in m.items()}
+         "keep_intermediate": "keep_intermediate", "prefix": "prefix", "slope_exp": "slope_exp", "area_exp": "area_exp",
+         "wb_k": "wb_k", "wb_exp": "wb_exp", "max_init_area": "area_max_km2", "s_slow": "s_dep_max", "s_stop": "s_stop",
+         "s_max": "s_max", "generalize": "generalize_cell", "generalize_method": "generalize_method"}
+    d = {v: parser.get_default(k) for k, v in m.items()}
+    d["generalize_rescale_threshold"] = not parser.get_default("generalize_keep_threshold")
+    return d
 
 
 def _pour_points(path):
@@ -79,8 +102,12 @@ def main(argv=None):
     from . import pipeline, part2, config
     log = (lambda *x: None) if a.quiet else print
     par = pipeline.Params(a.dtm or "", a.outdir or "", a.threshold, a.resolution, a.prefill, a.kd_radius,
+                          slope_exp=a.slope_exp, area_exp=a.area_exp,
                           keep_intermediate=a.keep_intermediate, write_network=not a.no_network or a.runout,
-                          prefix=a.prefix)
+                          prefix=a.prefix, s_max=a.s_max, s_dep_max=a.s_slow, s_stop=a.s_stop,
+                          wb_k=a.wb_k, wb_exp=a.wb_exp, area_max_km2=a.max_init_area,
+                          generalize_cell=a.generalize, generalize_method=a.generalize_method,
+                          generalize_rescale_threshold=not a.generalize_keep_threshold)
     rp = part2.RunoutParams(a.min_area, a.max_area, a.split_area, a.energy_factor, a.min_restart_len,
                             a.main_branch, a.start_at_head, _pour_points(a.pour_points) if a.pour_points else None,
                             hotspot_snap_m=a.hotspot_snap, hotspot_prune=not a.no_prune,
